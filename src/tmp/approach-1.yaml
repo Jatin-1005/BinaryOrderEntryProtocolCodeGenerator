@@ -1,0 +1,81 @@
+Version: "2.11.68"
+Messages: 
+  LoginRequest:
+    StartOfMessage:
+        dataType: uint16_t
+        descripton: "Must be 0xBA 0xBA."
+    MessageLength:
+        dataType: uint16_t
+        description: "Number of bytes for the message, including this field but not including the two bytes for the StartOfMessage field."
+    MessageType:
+        dataType: uint8_t
+        description: "Login Request (0x37)."
+    MatchingUnit:
+        dataType: uint8_t
+        description: "Always 0 for inbound (Member to Cboe) messages."
+    SequenceNumber:
+        dataType: uint32_t
+        description: "Always 0 for session level messages."
+    SessionSubID:
+        dataType: uint32_t
+        description: "Session Sub ID supplied by Cboe."
+    Username:
+        dataType: uint32_t
+        description: "Username supplied by Cboe."
+    Password:
+        dataType: bitset_80 # length 10 -> 10*8 = 80
+        description: "Password supplied by Cboe."
+    Groups:
+        -   NumberOfParamGroups:
+                NumberOfParamGroups:
+                    dataType: uint8_t
+                    description: "A number, n (possibly 0), of parameter groups to follow."
+                ParamGroupLength:
+                    dataType: uint16_t
+                    description: "Number of bytes for the parameter group, including this field."
+                ParamGroupType:
+                    dataType: uint8_t
+                    description: "0x80."
+                Types:
+                    -   NoUnspecifiedUnitReplay:
+                            NoUnspecifiedUnitReplay:
+                                dataType: uint8_t
+                                description: "Flag indicating whether to replay missed outgoing (Cboe to Member) messages for unspecified units. 0x00 = False, 0x01 = True."
+                            Groups:
+                                -   NumberOfUnits:
+                                        NumberOfUnits:
+                                            dataType: uint8_t 
+                                            description: "Number of unit/sequence pairs to follow, one per unit from which the Member has received messages." 
+                                        UnitNumber:
+                                            dataType: uint8_t    
+                                            description: "Unit number." 
+                                        UnitSequence:
+                                            dataType: uint32_t
+                                            description: "Last received sequence number for the unit."
+                    -   MessageType:
+                            MessageType:
+                                dataType: uint8_t
+                                description: "Return message type for which the bitfields are being specified (e.g., 0x25 for an Order Acknowledgment message)."
+                            Groups:
+                                -   NumberOfReturnBitfields:
+                                        NumberOfReturnBitfields:
+                                            dataType: uint8_t
+                                            description: "Number of bitfields to follow."
+                                        ReturnBitfield:
+                                            dataType: uint8_t
+                                            description: "Bitfield identifying fields to return."
+
+  
+             
+
+  # # the above is some idea, think of yaml to be easy to write, and expressive enought to make things more extensible.
+  # # modify Field: StartOfMessage to StartOfMessage: as key.
+  # # have cookies which tells which protocol it is refering to, codec_generation should use the cookies to generate the code.
+  #   - Field: StartOfMessage
+  #     Optional: false # if the block is present, is it optional or not. if nogroups!=0, then will the field be present is what we are checking.
+  # convert the whole code into bitset or something like that representation and map everything internally to the int8 or bitset<80> or someother things.
+  # update the documentation on the code I have written, and things discussed in the meeting and things i'm planning to do, and learned
+  
+
+    
+  

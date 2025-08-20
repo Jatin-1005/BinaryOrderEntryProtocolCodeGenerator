@@ -1,0 +1,163 @@
+NumberOfReturnBitfields:
+    dataType: uint8_t
+    description: "Number of bitfields to follow."
+    metaData: Group
+    data:
+        ReturnBitfield:
+            dataType: uint8_t
+            description: "Bitfield identifying fields to return."
+
+
+NumberOfUnits:
+    dataType: uint8_t
+    description: "Number of unit/sequence pairs to follow, one per unit from which the Member has received messages."
+    metaData: Group
+    data:
+        UnitNumber:
+            dataType: uint8_t
+            description: "Unit number."
+        UnitSequence:
+            dataType: uint32_t
+            description: "Last received sequence number for the unit."
+
+
+UnitSequences:
+    # dataType: uint8_t
+    # description: "Flag indicating whether to replay missed outgoing (Cboe to Member) messages for unspecified units. 0x00 = False, 0x01 = True."
+    metaData: Type
+    data:
+        ParamGroupLengthUnitSequences: # currently handling by adding typename at the end of the common member.
+            dataType: uint16_t
+            description: "Number of bytes for the parameter group, including this field."
+        ParamGroupTypeUnitSequences: # currently handling by adding typename at the end of the common member.
+            dataType: uint8_t
+            description: "0x80."
+        NoUnspecifiedUnitReplay:
+            dataType: uint8_t
+            description: "Flag indicating whether to replay missed outgoing (Cboe to Member) messages for unspecified units. 0x00 = False, 0x01 = True."
+        NumberOfUnits:
+            dataType: uint8_t
+            description: "Number of unit/sequence pairs to follow, one per unit from which the Member has received messages."
+            metaData: Group 
+
+
+ReturnBitfields:
+    # dataType: uint8_t
+    # description: "Return message type for which the bitfields are being specified (e.g., 0x25 for an Order Acknowledgment message)."
+    metaData: Type
+    data:
+        ParamGroupLengthReturnBitfields: # currently handling by adding typename at the end of the common member.
+            dataType: uint16_t
+            description: "Number of bytes for the parameter group, including this field."
+        ParamGroupTypeReturnBitfields: # currently handling by adding typename at the end of the common member.
+            dataType: uint8_t
+            description: "0x80."
+        MessageType:
+            dataType: uint8_t
+            description: "Return message type for which the bitfields are being specified (e.g., 0x25 for an Order Acknowledgment message)."
+        NumberOfReturnBitfields:
+            dataType: uint8_t
+            description: "Number of bitfields to follow."
+            metaData: Group
+
+
+NumberOfParamGroups:
+    dataType: uint8_t
+    description: "A number, n (possibly 0), of parameter groups to follow."
+    metaData: Types
+    hasType: True
+    data:
+        UnitSequences:
+            # dataType: uint8_t
+            # description: "Flag indicating whether to replay missed outgoing (Cboe to Member) messages for unspecified units. 0x00 = False, 0x01 = True."
+            metaData: Type
+        ReturnBitfields:
+            # dataType: uint8_t
+            # description: "Return message type for which the bitfields are being specified (e.g., 0x25 for an Order Acknowledgment message)."
+            metaData: Type
+
+
+LoginRequest:
+    description: "Login Request Message"
+    metaData: Message
+    data:
+        StartOfMessage:
+            dataType: uint16_t
+            description: "Must be 0xBA 0xBA."
+        MessageLength:
+            dataType: uint16_t
+            description: "Number of bytes for the message, including this field but not including the two bytes for the StartOfMessage field."
+        MessageType:
+            dataType: uint8_t
+            description: "Login Request (0x37)."
+        MatchingUnit:
+            dataType: uint8_t
+            description: "Always 0 for inbound (Member to Cboe) messages."
+        SequenceNumber:
+            dataType: uint32_t
+            description: "Always 0 for session level messages."
+        SessionSubID:
+            dataType: char*
+            dataTypeLen: 4
+            description: "Session Sub ID supplied by Cboe."
+        Username:
+            dataType: char*
+            dataTypeLen: 4
+            description: "Username supplied by Cboe."
+        Password:
+            dataType: char* # Length 10 -> 10*8 = 80
+            dataTypeLen: 10
+            description: "Password supplied by Cboe."
+        NumberOfParamGroups:
+            description: "A number, n (possibly 0), of parameter groups to follow."
+            metaData: Types
+            dataType: uint8_t
+            data:
+                UnitSequences:
+                    # dataType: uint8_t
+                    # description: "Flag indicating whether to replay missed outgoing (Cboe to Member) messages for unspecified units. 0x00 = False, 0x01 = True."
+                    metaData: Type
+                ReturnBitfields:
+                    # dataType: uint8_t
+                    # description: "Return message type for which the bitfields are being specified (e.g., 0x25 for an Order Acknowledgment message)."
+                    metaData: Type
+
+                    
+LoginResponse:
+    description: "Login Response Message"
+    metaData: Message
+    data:
+        StartOfMessage:
+            dataType: uint16_t
+            description: "Must be 0xBA 0xBA."
+        MessageLength:
+            dataType: uint16_t
+            description: "Number of bytes for the message, including this field but not including the two bytes for the StartOfMessage field."
+        MessageType:
+            dataType: uint8_t
+            description: "Login Request (0x37)."
+        MatchingUnit:
+            dataType: uint8_t
+            description: "Always 0 for inbound (Member to Cboe) messages."
+        SequenceNumber:
+            dataType: uint32_t
+            description: "Always 0 for session level messages."
+        LoginResponseStatus:
+            dataType: char*
+            dataTypeLen: 1
+            description: "Accepted, or the reason for the rejection."
+            # enums can be added here, what are different types of enums here.
+        LoginResponseText:
+            dataType: char*
+            dataTypeLen: 60
+            description: "Human-readable text with additional information about the reason for rejection."
+        NoUnspecifiedUnitReplay:
+            dataType: uint8_t
+            description: "Echoed back from the original Login Request message."
+        LastReceivedSequenceNumber:
+            dataType: uint32_t
+            description: "Last inbound (Member to Cboe) message sequence number processed by Cboe"
+        NumberOfUnits:
+            dataType: uint8_t
+            description: "Number of unit/sequence pairs to follow, one per unit from which the Member has received messages."
+            metaData: Group

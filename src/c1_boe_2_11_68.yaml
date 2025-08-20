@@ -1,0 +1,252 @@
+Messages:
+  LoginRequest:
+    Fields:
+      StartOfMessage: StartOfMessageEnum::STARTOFMESSAGE
+      MessageLength:
+      MessageType: MessagesEnum::LOGINREQUEST
+      MatchingUnit:  MatchingUnitEnum::MATCHINGUNIT
+      SequenceNumber: SequenceNumberEnum::SEQUENCENUMBER
+      SessionSubID:
+      Username:
+      Password:
+      NumberOfParamGroups:
+        ParamGroups:
+          UnitSequences:
+          ReturnBitfields:
+
+  NewOrderCross:
+    Fields:
+      StartOfMessage: StartOfMessageEnum::STARTOFMESSAGE
+      MessageLength:
+      MessageType: MessagesEnum::NEWORDERCROSS
+      MatchingUnit: MatchingUnitEnum::MATCHINGUNIT
+      SequenceNumber:
+      CrossID:
+      CrossType: [{Unknown: 0}, {AIM: 1}, {QCC: 2}, {SAM: 3}, {PCC: 4}]
+      CrossPrioritization: [{Buy: 1}, {Sell: 2}, {Unknown: 0}]
+      Price: 
+      OrderQty:
+      NumberOfNewOrderCrossBitfields:
+        ParamGroups:
+          NumberOfNewOrderCrossBitfields:
+      GroupCnt:
+        ParamGroups:
+          RepeatingGroupsOfNewOrderCross:
+      Symbol: NumberOfNewOrderCrossBitfields
+      MaturityDate: NumberOfNewOrderCrossBitfields
+      StrikePrice: NumberOfNewOrderCrossBitfields
+      PutOrCall: NumberOfNewOrderCrossBitfields
+      ExecInst: NumberOfNewOrderCrossBitfields
+      AttributedQuote: NumberOfNewOrderCrossBitfields
+      TargetPartyID: NumberOfNewOrderCrossBitfields
+      PreventMatch: NumberOfNewOrderCrossBitfields
+      AutoMatch: NumberOfNewOrderCrossBitfields
+      AutoMatchPrice: NumberOfNewOrderCrossBitfields
+      LastPriority: NumberOfNewOrderCrossBitfields
+      RoutingFirmID: NumberOfNewOrderCrossBitfields
+Groups:
+  NumberOfNewOrderCrossBitfields:
+    Fields:
+      NewOrderCrossBitfield:
+
+  RepeatingGroupsOfNewOrderCross:
+    Fields:
+      Side: [{Buy: 1}, {Sell: 2}, {Unknown: 0}]
+      AllocQty:
+      ClOrdID:
+      Capacity: [{Unknown: 'Z'}, {Customer: 'C'}, {Market_Maker: 'M'}, {Firm: 'F'}, {Professional_Customer: 'U'}, {Away_Market_Maker: 'N'}, {Broker_Dealer: 'B'}, {Joint_Back_Office: 'J'}]
+      OpenClose: [{Unknown: 'Z'}, {Open: 'O'}, {Close: 'C'}, {None: 'N'}]
+      GiveUpFirmID:
+      Account: NumberOfNewOrderCrossBitfields
+      CMTANumber: NumberOfNewOrderCrossBitfields
+      ClearingAccount: NumberOfNewOrderCrossBitfields
+      ClearingOptionalData: NumberOfNewOrderCrossBitfields
+    metaData: 
+      hasOptional: NumberOfNewOrderCrossBitfields
+      message: NewOrderCross
+  
+  NumberOfUnits:
+    Fields:
+      UnitNumber:
+      UnitSequence:
+
+  UnitSequences:
+    Fields:
+      ParamGroupLength: # might need to handle the name using technique like ParamGroupLengthUnitSequences
+      ParamGroupType: ParamGroupTypesEnum::UNITSEQUENCES
+      NoUnspecifiedUnitReplay: [ {True : 0x01}, {False: 0x00}, {Unknown : 0x02} ]
+      NumberOfUnits:
+        ParamGroups:
+          NumberOfUnits:
+
+  NumberOfReturnBitfields:
+    Fields:
+      ReturnBitfield:
+  
+  ReturnBitfields:
+    Fields:
+      ParamGroupLength:
+      ParamGroupType: ParamGroupTypesEnum::RETURNBITFIELDS
+      MessageType:
+      NumberOfReturnBitfields:
+        ParamGroups:
+          NumberOfReturnBitfields:
+
+
+Optionals:
+  NewOrderCross:
+    0:
+      Symbol:
+      MaturityDate:
+      StrikePrice:
+      PutOrCall:
+      ExecInst:
+      AttributedQuote:
+      TargetPartyID:
+      PreventMatch:
+    1:
+      AutoMatch:
+      AutoMatchPrice:
+      LastPriority:
+      Account:
+      CMTANumber:
+      ClearingAccount:
+      RoutingFirmID:
+      ClearingOptionalData:
+
+Enums:
+  Messages:
+    data:
+      LOGINREQUEST: 0x37
+      LOGINRESPONSE: 0x24
+      NEWORDERCROSS: 0x41 
+    dataType: uint8_t
+  ParamGroupTypes:
+    data:
+      RETURNBITFIELDS: 0x81
+      UNITSEQUENCES: 0x80
+    dataType: uint8_t
+  StartOfMessage:
+    data:
+      StartOfMessage: 0xbaba
+    dataType: uint16_t
+  MatchingUnit:
+    data:
+      MatchingUnit: 0x0
+    dataType: uint8_t
+  SequenceNumber:
+    data:
+      SequenceNumber: 0x0
+    dataType: uint32_t
+
+Fields:
+  StartOfMessage:
+    dataType: uint16_t
+  MessageLength:
+    dataType: uint16_t
+  MessageType:
+    dataType: uint8_t
+  MatchingUnit:
+    dataType: uint8_t
+  SequenceNumber:
+    dataType: uint32_t
+  SessionSubID:
+    dataType: char*
+    dataLen: 4
+  Username:
+    dataType: char*
+    dataLen: 4
+  Password:
+    dataType: char*
+    dataLen: 10
+  NumberOfParamGroups:
+    dataType: uint8_t
+  ParamGroupLength:
+    dataType: uint16_t
+  ParamGroupType:
+    dataType: uint8_t
+  NoUnspecifiedUnitReplay:
+    dataType: uint8_t
+  NumberOfUnits:
+    dataType: uint8_t
+  UnitNumber:
+    dataType: uint8_t
+  UnitSequence:
+    dataType: uint32_t
+  MessageType:
+    dataType: uint8_t
+  NumberOfReturnBitfields:
+    dataType: uint8_t
+  ReturnBitfield:
+    dataType: uint8_t
+  CrossID:
+    dataType: char*
+    dataLen: 20
+  CrossType:
+    dataType: char
+  CrossPrioritization:
+    dataType: char
+  Price:
+    dataType: uint64_t
+  OrderQty:
+    dataType: uint32_t
+  NumberOfNewOrderCrossBitfields:
+    dataType: uint8_t
+  NewOrderCrossBitfield:
+    dataType: uint8_t
+  GroupCnt:
+    dataType: uint16_t
+  Side:
+    dataType: char
+  AllocQty:
+    dataType: uint32_t
+  ClOrdID:
+    dataType: char*
+    dataLen: 20
+  Capacity:
+    dataType: char
+  OpenClose:
+    dataType: char
+  GiveUpFirmID:
+    dataType: char*
+    dataLen: 4
+  Symbol:
+    dataType: char*
+    dataLen: 8
+  MaturityDate:
+    dataType: uint32_t
+  StrikePrice:
+    dataType: uint64_t
+  PutOrCall:
+    dataType: char
+  ExecInst:
+    dataType: char
+  AttributedQuote:
+    dataType: char
+  TargetPartyID:
+    dataType: char*
+    dataLen: 4
+  PreventMatch:
+    dataType: char*
+    dataLen: 3
+  AutoMatch:
+    dataType: char
+  AutoMatchPrice:
+    dataType: uint64_t
+  LastPriority:
+    dataType: char
+  Account:
+    dataType: char*
+    dataLen: 16
+  CMTANumber:
+    dataType: char*
+    dataLen: 4
+  ClearingAccount:
+    dataType: char*
+    dataLen: 4
+  RoutingFirmID:
+    dataType: char*
+    dataLen: 4
+  ClearingOptionalData:
+    dataType: char*
+    dataLen: 16

@@ -1,0 +1,91 @@
+{#
+This template uses Full_BOE_Config.yaml to generate Full_BOE_Config_BOE_Msgs.h
+
+This file assumes Full_BOE_Config.yaml has nested declaration, uses metaData, and setter and getter are generated partially using this template.
+Full_BOE_Config_BOE_Msgs.h is generated based on Full_BOE_Config.yaml and the current template.
+#}
+
+#pragma once
+#include <iostream>
+#include <bitset>
+#include <vector>
+#include <memory>
+#include <variant>
+
+{% set field_type_map = {
+    'uint8_t': 'uint8_t',
+    'uint16_t': 'uint16_t',
+    'uint32_t': 'uint32_t',
+    'bitset_80': 'std::bitset<80>',
+} %}
+
+{%- macro render_camelCase(field) -%}
+    {{- field[:1] | lower }}{{ field[1:] -}}
+{%- endmacro -%}
+
+{%- macro render_member(field) -%}
+    {{ render_camelCase(field) }}_
+{%- endmacro -%}
+
+{%- macro render_group(group_name, group_details, indent="    ") -%}
+    {%- set new_indent = indent + '    ' -%}
+    {{- indent }}struct Group{{ group_name }} { {{"\n" -}}
+    {{- new_indent }}{{ group_details.dataType }} {{ render_member(group_name) }}; // {{ group_details.description }}{{"\n"-}}
+        {{- new_indent }}struct Member { {{"\n" -}}
+            {{- render_fields(group_details.data, new_indent + '    ') -}}
+        {{- new_indent }}}; {{"\n" -}}
+        {{- new_indent }}std::unique_ptr<std::vector<Member>> members_; {{"\n" -}}
+    {{- indent }}}; {{"\n" -}}
+    {{- indent }}Group{{ group_name }} group{{ group_name }}_; {{"\n" -}}
+{%- endmacro -%}
+
+{%- macro render_type(type_name, type_details, indent="    ") -%}
+    {%- set new_indent = indent + '    ' -%}
+    {{- indent }}struct Type{{type_name}} { {{"\n" -}}
+        {{- new_indent }}{{ type_details.dataType }} {{ render_member(type_name) }}; // {{ type_details.description }}{{"\n"-}}
+        {{- render_fields(type_details.data, new_indent) -}}
+    {{- indent }}}; {{"\n" -}}
+    {{- indent }}std::vector<Type{{type_name}}> type{{type_name}}List_;{{ "\n" -}}
+{%- endmacro -%}
+
+{%- macro render_fields(fields, indent="    ") -%}
+    {%- for field, details in fields.items() -%}
+        {%- if 'metaData' not in details -%}
+            {{- indent }}{{ field_type_map.get(details.dataType) }} {{ render_member(field) }}; // {{ details.description }}{{"\n"-}}
+        {%- elif details.metaData == 'Group'-%}
+            {{- render_group(field, details, indent) -}}
+        {%- elif details.metaData == 'Type' -%}
+            {{- render_type(field, details, indent) -}}
+        {%- endif -%}
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro render_accessors(fields, prefix="", arguments="") -%}
+    {%- for field, details in fields.items(): -%}
+        {%- if 'metaData' not in details -%}
+            {{- indent }}{{ field_type_map.get(details.dataType) }} get{{field}}() const { return {{ render_member(field) }}; }{{"\n"-}}
+{#            {{- indent }}void set{{field}}({{ field_type_map.get(details.dataType)}} {{ render_camelCase(field) }}  ) { {{render_member(field)}} = {{render_camelCase(field)}}; };{{"\n"-}}{{"\n"-}} #}
+        {%- elif details.metaData == 'Group' -%}
+            {%- set new_prefix = prefix + 'group' + field + '_.' -%}
+            {{- indent }}{{ field_type_map.get(details.dataType) }} get{{field}}({{arguments}}) const { return {{new_prefix}}{{ render_member(field) }}; }{{"\n"-}}
+            {{ render_accessors(details.data, new_prefix + 'members_->at(memberIndex).', arguments+"size_t memberIndex, ") }}
+        {%- elif details.metaData == 'Type' -%}
+            {%- set new_prefix = prefix + 'type' + field + '_.' -%}
+            {{- indent }}{{ field_type_map.get(details.dataType) }} get{{field}}({{arguments}}) const { return {{new_prefix}}{{ render_member(field) }}; }{{"\n"-}}
+            {{ render_accessors(details.data, new_prefix) }}
+        {%- endif -%}
+    {%- endfor -%}
+{%- endmacro -%}
+
+class {{ message_name }} {
+private: {{ "\n" }}
+{{- render_fields(fields) -}}
+{{- "\n" -}}
+public: {{ "\n" }}
+{{- render_accessors(fields) -}}
+};
+
+int main() {
+    LoginRequest loginRequest;
+    return 0;
+}

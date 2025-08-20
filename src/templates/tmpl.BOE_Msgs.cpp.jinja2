@@ -1,0 +1,335 @@
+{%- macro renderCamelCase(field) -%}
+    {# # Convert the first character to lowercase for camelCase formatting #}
+    {{- field[:1] | lower }}{{ field[1:] -}}
+{%- endmacro -%}
+
+{%- macro renderMemberName(field) -%}
+    {# # Append an underscore to the camelCase formatted field for member variables #}
+    {{- renderCamelCase(field) -}}_
+{%- endmacro -%}
+
+{%- macro renderOptionalEnumerators(data) -%}
+    {# # Generate enumerators for optional fields and their bitfield indices #}
+    {%- for message, details in data.items() -%}
+        enum class {{message}}BitfieldIdx: uint8_t {
+            {%- for optionIdx, options in details.items() -%}
+                {# # Comment indicating the bitfield group index #}
+                // Bitfield group with index {{optionIdx}} {{"\n"}}
+                {%- for option, presence in options.items() -%}
+                    {{option|upper}} = {{optionIdx}},
+                {%- endfor -%}
+                {{"\n\n"}}
+            {%- endfor -%}
+        };
+        enum class {{message}}BitIdx: uint8_t {
+            {%- for optionIdx, options in details.items() -%}
+                // Bitfield group with index {{optionIdx}} {{"\n"}}
+                {%- for option, presence in options.items() -%}
+                    {{option|upper}} = {{loop.index - 1 }},
+                {%- endfor -%}
+                {{"\n\n"}}
+            {%- endfor -%}
+        };
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderStringLenEnum(data) -%}
+    {# # Generate an enum to define the length of string fields #}
+    enum StringLengthsEnum: size_t {
+        {%- for name, details in data.items() -%}
+            {%- if details.dataType == 'char*' -%}
+                {{name|upper}} = {{details.dataLen}},
+            {%- endif -%}
+        {%- endfor -%}
+    };
+{%- endmacro -%}
+
+{%- macro renderEnumerators() -%}
+    {# # Generate enumerators from the YAML data's "Enums" section #}
+    {%- for name, details in yamlData['Enums'].items() -%}
+        enum {{name}}Enum: {{details.dataType}} {
+            {%- for key, value in details.data.items() -%}
+                {{key|upper}} = {{value}}
+                {%- if not loop.last -%}
+                ,
+                {%- endif -%}
+            {%- endfor -%}
+        };
+        {# # Map for converting between integer values and enum types #}
+        static const std::unordered_map<{{details.dataType}}, {{name}}Enum> {{renderCamelCase(name)}}EnumOptions = {
+            {%- for key, value in details.data.items() -%}
+                { {{value}}, {{name}}Enum::{{key|upper}} }
+                {%- if not loop.last -%}
+                    {{","}} 
+                {%- endif -%}  
+            {%- endfor -%}
+        };
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderMembers(data) -%}
+    {# # Generate member variables for fields, groups, and parameter groups #}
+    {%- for member, details in data.Fields.items() -%}
+        {%- set dataType = yamlData['Fields'][member]['dataType'] -%}
+        {% if details is iterable and (details is not string and details is not mapping) %}
+            {# # Generate enum for constrained types #}
+            public:
+            enum class {{ member }}Enum: {{dataType}} {
+                {%- for item in details -%}
+                    {%- for type, value in item.items() -%}
+                        {%- if dataType == 'char' -%}
+                            {{ type | upper }} = '{{ value }}'
+                        {%- else -%}
+                            {{ type | upper }} = {{ value }}
+                        {%- endif -%}
+                    {%- endfor -%}
+                    {%- if not loop.last -%}
+                        {{","}} 
+                    {%- endif -%}
+                {%- endfor -%}
+            };
+            static const std::unordered_map<{{dataType}}, {{member}}Enum> {{renderCamelCase(member)}}EnumOptions;
+            private:
+            {{member}}Enum {{renderMemberName(member)}};
+        {%- elif details is mapping and 'ParamGroups' in details -%}
+            {# # Generate parameter group fields #}
+            {{dataType}} {{renderMemberName(member)}};
+            {%- for group, groupSize in details.ParamGroups.items() -%}
+                std::vector<Group{{group}}> group{{group}}List_;
+            {%- endfor -%}
+        {%- else -%}
+            {%- if details is string and 'Enum' in details -%}
+                {# # Add constexpr for fixed fields #}
+                static constexpr {{" "}}
+            {%- endif -%}
+
+            {# # Declare field based on its data type #}
+            {%- if dataType == 'char*' -%}
+                std::array<char,StringLengthsEnum::{{member|upper}}>  {{renderMemberName(member)}}
+            {%- else -%}
+                {{dataType}} {{renderMemberName(member)}}
+            {%- endif -%}
+            
+            {%- if details is string and 'Enum' in details -%}
+                = {{details}}
+            {%- endif -%}
+            {{ ";" }}
+        {%- endif -%}
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderGroupAccessors(member, group)-%}
+    {# # Generate accessor methods for groups #}
+    inline const std::vector<Group{{group}}>& getGroup{{group}}() const noexcept {
+        return group{{group}}List_;
+    }
+    inline std::vector<Group{{group}}>& getGroup{{group}}Ref() noexcept {
+        return group{{group}}List_;
+    }
+    inline std::vector<Group{{group}}> getGroup{{group}}Copy() const noexcept {
+        return group{{group}}List_;
+    }
+    inline void setGroup{{group}}(Group{{group}}&& group{{group}}) noexcept {
+        group{{group}}List_.emplace_back(group{{group}});
+        {# # Increment the representative field for the group #}
+        ++{{renderMemberName(member)}};  
+        return;
+    }
+{%- endmacro -%}
+
+{%- macro renderAccessors(data) -%}
+    {# # Generate getter and setter methods for fields #}
+    {%- for member, details in data.Fields.items() -%}
+        {%- set dataType = yamlData['Fields'][member]['dataType'] -%}
+        {{"\n"}}
+        {% if details is iterable and (details is not string and details is not mapping) %}
+            {# # Accessors for constrained types #}
+            inline const {{ member }}Enum& get{{member}}() const noexcept {return {{renderMemberName(member)}};}
+            inline {{ member }}Enum& get{{member}}Ref() noexcept {return {{renderMemberName(member)}};}
+            inline {{ member }}Enum get{{member}}Copy() const noexcept {return {{renderMemberName(member)}};}
+            inline void set{{member}}({{ member }}Enum {{renderCamelCase(member)}}) noexcept { {{renderMemberName(member)}} = {{renderCamelCase(member)}};}
+        {%- elif details is mapping and 'ParamGroups' in details -%}
+            {# # Accessors for parameter groups #}
+            inline const {{ dataType }}& get{{member}}() const noexcept { return {{renderMemberName(member)}}; }
+            inline {{ dataType }} get{{member}}Copy() const noexcept { return {{renderMemberName(member)}}; }
+            {%- for group, groupSize in details.ParamGroups.items() -%}
+                {{renderGroupAccessors(member, group)}}
+            {%- endfor -%}
+        {%- elif details is string and 'Enum' in details -%}
+            {# # Accessors for constexpr fields #}
+            inline constexpr const {{ dataType }}& get{{member}}() const noexcept {return {{renderMemberName(member)}};}
+            inline {{ dataType }} get{{member}}Copy() const noexcept {return {{renderMemberName(member)}};}
+        {%- elif  dataType == 'char*' -%}
+            {# # Accessors for char array fields #}
+            inline const std::array<char, StringLengthsEnum::{{member|upper}}>& get{{member}}() const noexcept { return {{renderMemberName(member)}}; }
+            inline std::array<char, StringLengthsEnum::{{member|upper}}>& get{{member}}Ref() noexcept { return {{renderMemberName(member)}}; }
+            inline std::array<char, StringLengthsEnum::{{member|upper}}> get{{member}}Copy() const noexcept { return {{renderMemberName(member)}}; }
+            inline void set{{member}}(const char* {{renderCamelCase(member)}}) noexcept {
+                {# # Copy and pad input char array #}
+                std::size_t length = std::min<std::size_t>(StringLengthsEnum::{{member|upper}}, std::strlen({{renderCamelCase(member)}}));
+                std::memcpy({{renderMemberName(member)}}.data(), {{renderCamelCase(member)}}, length);
+                for(size_t i = length; i < StringLengthsEnum::{{member|upper}}; ++i ){ {{renderMemberName(member)}}[i] = 0;}
+            }
+        {%- else -%}
+            {# # Accessors for non-const fields #}
+            inline const {{ dataType }}& get{{member}}() const noexcept {return {{renderMemberName(member)}};}
+            inline {{ dataType }}& get{{member}}Ref() noexcept {return {{renderMemberName(member)}};}
+            inline {{ dataType }} get{{member}}Copy() const noexcept {return {{renderMemberName(member)}};}
+            inline void set{{member}}({{ dataType }} {{renderCamelCase(member)}}) noexcept { {{renderMemberName(member)}} = {{renderCamelCase(member)}};}
+        {%- endif -%}
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderConstructorList(prefix, data) -%}
+    {# # Generate default and parameterized constructors for a class #}
+    {%- set moveConstructorInitializerList = [] -%}
+    {%- set moveConstructorArguments = [] -%}
+    {%- set defaultConstructorInitializerList = [] -%}
+    {%- for member, details in data.Fields.items() -%}
+        {%- set dataType = yamlData['Fields'][member]['dataType'] -%}
+
+        {% if details is iterable and (details is not string and details is not mapping) %}
+            {# # For constrained types #}
+            {%- set item = renderMemberName(member) ~ "(" ~ renderCamelCase(member) ~ ")" -%}
+            {%- do moveConstructorInitializerList.append(item) -%}
+
+            {%- set item = member ~ "Enum " ~ renderCamelCase(member) -%}
+            {%- do moveConstructorArguments.append(item) -%}
+
+            {%- set item = renderMemberName(member) ~ "("~ member ~"Enum::UNKNOWN)"-%}
+            {%- do defaultConstructorInitializerList.append(item) -%}
+        {%- elif details is mapping and 'ParamGroups' in details -%}
+            {# # For parameter groups #}
+            {%- set item = renderMemberName(member) ~ "(0)" -%}
+            {%- do defaultConstructorInitializerList.append(item) -%}
+            {%- do moveConstructorInitializerList.append( renderMemberName(member) ~ "(group" ~ details.ParamGroups.keys()|join('List.size() + group') ~ "List.size())") -%}
+            {%- for group, groupSize in details.ParamGroups.items() -%}
+                {%- set item = "group" ~ group ~ "List_(group" ~ group ~ "List)" -%}
+                {%- do moveConstructorInitializerList.append(item) -%}
+
+                {%- set item = "std::vector<Group" ~ group ~ ">&&" ~ " " ~ "group" ~ group ~ "List" -%}
+                {%- do moveConstructorArguments.append(item) -%}
+
+                {%- set item = "group" ~ group ~ "List_()" -%}
+                {%- do defaultConstructorInitializerList.append(item) -%}
+            {%- endfor -%}
+        {%- elif dataType == 'char*' -%}
+            {# # For char arrays #}
+            {%- set item = renderMemberName(member) ~ "(" ~ ")" -%}
+            {%- do moveConstructorInitializerList.append(item) -%}
+            {%- set item = "const char* " ~ renderCamelCase(member) -%}
+            {%- do moveConstructorArguments.append(item) -%} 
+
+            {%- set item = renderMemberName(member) ~ "{}"-%}
+            {%- do defaultConstructorInitializerList.append(item) -%}
+        {%- elif details is not string or (details is string and 'Enum' not in details) -%}
+            {# # For general fields #}
+            {%- set item = renderMemberName(member) ~ "(" ~ renderCamelCase(member) ~ ")" -%}
+            {%- do moveConstructorInitializerList.append(item) -%}
+
+            {%- set item = dataType ~ " " ~ renderCamelCase(member) -%}
+            {%- do moveConstructorArguments.append(item) -%}
+
+            {%- set item = renderMemberName(member) ~ "(0)"-%}
+            {%- do defaultConstructorInitializerList.append(item) -%}
+        {%- endif -%}
+    {%- endfor -%}
+    {{prefix}}(): {{ defaultConstructorInitializerList | join(', ')}}{
+        {# # Default constructor #}
+    }
+    {{prefix}}({{ moveConstructorArguments | join(', ') }}):{{ moveConstructorInitializerList | join(', ') }} {
+        {# # Parameterized constructor #}
+        {%- for member, details in data.Fields.items() -%}
+            {%- set dataType = yamlData['Fields'][member]['dataType'] -%}
+            {%- if dataType == 'char*' -%}
+                std::memcpy({{renderMemberName(member)}}.data(), {{renderCamelCase(member)}}, StringLengthsEnum::{{member|upper}});
+            {%- endif -%}
+        {%- endfor -%}
+    } 
+{%- endmacro -%}
+
+{%- macro renderReset(prefix, data) -%}
+    {# # Generate a reset method for all fields #}
+    void reset(){
+        {%- for member, details in data.Fields.items() -%}
+            {%- set dataType = yamlData['Fields'][member]['dataType'] -%}
+            {% if details is iterable and (details is not string and details is not mapping) %}
+                {{ renderMemberName(member) ~ "="~ member ~"Enum::UNKNOWN;" }}
+            {%- elif details is mapping and 'ParamGroups' in details -%}
+                {{ renderMemberName(member) ~ " = 0;" }}
+                {%- for group, groupSize in details.ParamGroups.items() -%}
+                    {{ "group" ~ group ~ "List_.clear();" }}
+                {%- endfor -%}
+            {%- elif dataType == 'char*' -%}
+                {{renderMemberName(member) ~ ".fill('0');" }}
+            {%- elif details is not string or (details is string and 'Enum' not in details) -%}
+                {{ renderMemberName(member) ~ " = 0;" }}
+            {%- endif -%}
+        {%- endfor -%}
+    }
+{%- endmacro -%}
+
+{%- macro renderAccessorDefinition(prefix, data) -%}
+    {# # Define the accessor implementations for fields #}
+    {%- for member, details in data.Fields.items() -%}
+        {%- set dataType = yamlData['Fields'][member]['dataType'] -%}
+        {% if details is iterable and (details is not string and details is not mapping) %}
+            const std::unordered_map<{{dataType}}, {{prefix}}::{{member}}Enum> {{renderCamelCase(member)}}EnumOptions = {
+                {%- for item in details -%}
+                    {%- for type, value in item.items() -%}
+                        {%- if dataType == 'char' -%}
+                        { '{{value}}', {{prefix}}::{{member}}Enum::{{type|upper}} }
+                        {%- else -%}
+                        { {{value}}, {{prefix}}::{{member}}Enum::{{type|upper}} }
+                        {%- endif -%}
+                    {%- endfor -%}
+                    {%- if not loop.last -%}
+                        {{","}} 
+                    {%- endif -%}                
+                {%- endfor -%}
+            };
+        {%- endif -%}
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderGroups(data)-%}
+    {# # Generate classes for groups #}
+    {%- for name, details in data.items() -%}
+        class Group{{name}} {
+            {{renderMembers(details)}}
+        public:
+            {{renderConstructorList("Group" ~ name, details)}}
+            {{renderReset("Group" ~ name, details)}}
+            {{renderAccessors(details)}}
+        };
+        {{renderAccessorDefinition("Group" ~ name, details)}}
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderMessages(data)-%}
+    {# # Generate classes for messages #}
+    {%- for name, details in data.items() -%}
+        class {{name}} {
+            {{renderMembers(details)}}
+        public:
+            {{renderConstructorList(name, details)}}
+            {{renderReset(name, details)}}
+            {{renderAccessors(details)}}
+        }; 
+        {{renderAccessorDefinition(name, details)}}
+    {%- endfor -%}
+{%- endmacro -%}
+
+{# # Preprocessor directives for including necessary headers #}
+#pragma once
+#include <vector>
+#include <array>
+#include <unordered_map>
+#include <cstdint>
+#include <cstring>
+{{"\n"}}
+{{renderStringLenEnum( yamlData['Fields'])}}
+{{renderOptionalEnumerators( yamlData['Optionals'])}}
+{{renderEnumerators()}}
+{{renderGroups(yamlData['Groups'])}}
+{{renderMessages(yamlData['Messages'])}}

@@ -1,0 +1,73 @@
+# the tmpl.BOE_Msgs.h.jinja2 assumes the yaml structure is nested, and metaData is used to describe whether it is group or type.
+# Full_BOE_Config_BOE_Msgs.h is generated using the tmpl.BOE_Msgs.h.jinja2 and the current file.
+LoginRequest:
+    StartOfMessage:
+        dataType: uint16_t
+        description: "Must be 0xBA 0xBA."
+    MessageLength:
+        dataType: uint16_t
+        description: "Number of bytes for the message, including this field but not including the two bytes for the StartOfMessage field."
+    MessageType:
+        dataType: uint8_t
+        description: "Login Request (0x37)."
+    MatchingUnit:
+        dataType: uint8_t
+        description: "Always 0 for inbound (Member to Cboe) messages."
+    SequenceNumber:
+        dataType: uint32_t
+        description: "Always 0 for session level messages."
+    SessionSubID:
+        dataType: uint32_t
+        description: "Session Sub ID supplied by Cboe."
+    Username:
+        dataType: uint32_t
+        description: "Username supplied by Cboe."
+    Password:
+        dataType: bitset_80 # Length 10 -> 10*8 = 80
+        description: "Password supplied by Cboe."
+    NumberOfParamGroups:
+        dataType: uint8_t
+        description: "A number, n (possibly 0), of parameter groups to follow."
+        metaData: Group
+        data:
+            NoUnspecifiedUnitReplay:
+                dataType: uint8_t
+                description: "Flag indicating whether to replay missed outgoing (Cboe to Member) messages for unspecified units. 0x00 = False, 0x01 = True."
+                metaData: Type
+                data:
+                    ParamGroupLength:
+                        dataType: uint16_t
+                        description: "Number of bytes for the parameter group, including this field."
+                    ParamGroupType:
+                        dataType: uint8_t
+                        description: "0x80."
+                    NumberOfUnits:
+                        dataType: uint8_t
+                        description: "Number of unit/sequence pairs to follow, one per unit from which the Member has received messages."
+                        metaData: Group
+                        data:
+                            UnitNumber:
+                                dataType: uint8_t
+                                description: "Unit number."
+                            UnitSequence:
+                                dataType: uint32_t
+                                description: "Last received sequence number for the unit."
+            MessageType:
+                dataType: uint8_t
+                description: "Return message type for which the bitfields are being specified (e.g., 0x25 for an Order Acknowledgment message)."
+                metaData: Type
+                data:
+                    ParamGroupLength:
+                        dataType: uint16_t
+                        description: "Number of bytes for the parameter group, including this field."
+                    ParamGroupType:
+                        dataType: uint8_t
+                        description: "0x80."
+                    NumberOfReturnBitfields:
+                        dataType: uint8_t
+                        description: "Number of bitfields to follow."
+                        metaData: Group
+                        data:
+                            ReturnBitfield:
+                                dataType: uint8_t
+                                description: "Bitfield identifying fields to return."

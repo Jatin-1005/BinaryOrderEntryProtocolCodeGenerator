@@ -1,0 +1,52 @@
+LoginRequest:
+    StartOfMessage:
+        dataType: uint16_t
+        descripton: "Must be 0xBA 0xBA."
+    MessageLength:
+        dataType: uint16_t
+        description: "Number of bytes for the message, including this field but not including the two bytes for the StartOfMessage field."
+    Group_NumberOfParamGroups:
+        - NumberOfParamGroups:
+            dataType: uint8_t
+            description: "A number, n (possibly 0), of parameter groups to follow."
+        - Types:
+                Type_NoUnspecifiedUnitReplay:
+                    ParamGroupLength:
+                        dataType: uint16_t
+                        description: "Number of bytes for the parameter group, including this field."
+                    ParamGroupType:
+                        dataType: uint8_t
+                        description: "0x80."
+                    NoUnspecifiedUnitReplay:
+                        dataType: uint8_t
+                        description: "Flag indicating whether to replay missed outgoing (Cboe to Member) messages for unspecified units. 0x00 = False, 0x01 = True."
+                    Group_NumberOfUnits:
+                        - NumberOfUnits:
+                            dataType: uint8_t 
+                            description: "Number of unit/sequence pairs to follow, one per unit from which the Member has received messages." 
+                        - 
+                            UnitNumber:
+                                dataType: uint8_t    
+                                description: "Unit number." 
+                            UnitSequence:
+                                dataType: uint32_t
+                                description: "Last received sequence number for the unit."
+                
+                Type_MessageType:
+                    ParamGroupLength:
+                        dataType: uint16_t
+                        description: "Number of bytes for the parameter group, including this field."
+                    ParamGroupType:
+                        dataType: uint8_t
+                        description: "0x80."
+                    MessageType:
+                        dataType: uint8_t
+                        description: "Return message type for which the bitfields are being specified (e.g., 0x25 for an Order Acknowledgment message)."
+                    Group_NumberOfReturnBitfields:
+                        - NumberOfReturnBitfields:
+                            dataType: uint8_t
+                            description: "Number of bitfields to follow."
+                        - 
+                            ReturnBitfield:
+                                dataType: uint8_t
+                                description: "Bitfield identifying fields to return."

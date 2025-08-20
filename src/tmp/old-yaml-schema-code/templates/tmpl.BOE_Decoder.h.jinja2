@@ -1,0 +1,154 @@
+{%- set INDENT = '    ' -%}
+
+{%- macro renderCamelCase(field) -%}
+    {{- field[:1] | lower }}{{ field[1:] -}}
+{%- endmacro -%}
+
+{%- macro renderDecodeMessage(name, details) -%}
+    void _decode{{name}}(char*& start, char*& end, Status& status)
+    {
+        {%- for member_name, member_details in details.data.items() -%}
+            {%- if 'metaData' not in member_details -%}
+                {%- if 'dataTypeLen' in member_details -%}
+                    {{renderCamelCase(name)}}.set{{member_name}}(start);
+                    start += {{member_details.dataTypeLen}};
+                {%- else -%}
+                    {{renderCamelCase(name)}}.set{{member_name}}(_getField<{{member_details.dataType}}>(start, end));
+                {%- endif -%}
+            {%- elif member_details.metaData == 'Group' -%}
+                {{renderCamelCase(name)}}.set{{member_name}}(_getField<{{member_details.dataType}}>(start, end));
+                for({{ member_details.dataType }} i = 0; i < {{ renderCamelCase(name) }}.get{{ member_name }}(); i++)
+                {
+                    _decode{{member_details.metaData}}{{member_name}}(start, end, status);
+                    {{renderCamelCase(name)}}.setGroup{{member_name}}(std::move(group{{member_name}}));
+                }
+            {%- elif member_details.metaData == 'Types' -%}
+                {{ renderCamelCase(name) }}.set{{ member_name }}(_getField<{{ member_details.dataType }}>(start, end));
+                for({{ member_details.dataType }} i = 0; i < {{ renderCamelCase(name) }}.get{{ member_name }}(); i++)
+                {
+                    TypeEnum type = static_cast<TypeEnum>(_getType(start, end));
+                    {%- for type_name, type_details in member_details.data.items() %}
+                        {%- if loop.first -%}
+                        if(type == TypeEnum::{{ type_name | upper }})
+                        {%- else -%}
+                        else if(type == TypeEnum::{{ type_name | upper }})
+                        {%- endif -%}
+                        {
+                            _decode{{type_details.metaData}}{{type_name}}(start, end, status);
+                            {{renderCamelCase(name)}}.setType{{type_name}}(std::move(type{{type_name}}));
+                        }
+                    {%- endfor -%}
+                        else {
+                            std::cout << "Type Not Found" << std::endl;
+                        }
+                }
+            {%- endif -%}
+        {%- endfor -%}
+        return;
+    }
+{%- endmacro -%}
+
+{%- macro renderDecodeType(name, details) -%}
+    void _decodeType{{name}}(char*& start, char*& end, Status& status)
+    {
+        {%- for member_name, member_details in details.data.items() -%}
+            {%- if 'metaData' not in member_details -%}
+                {%- if 'dataTypeLen' in member_details -%}
+                    type{{(name)}}.set{{member_name}}(start);
+                    start += {{member_details.dataTypeLen}};
+                {%- else -%}
+                    type{{(name)}}.set{{member_name}}(_getField<{{member_details.dataType}}>(start, end));
+                {%- endif -%}
+            {%- elif member_details.metaData == 'Group' -%}
+                type{{(name)}}.set{{member_name}}(_getField<{{member_details.dataType}}>(start, end));
+                for({{ member_details.dataType }} i = 0; i < type{{(name)}}.get{{ member_name }}(); i++)
+                {
+                    _decode{{member_details.metaData}}{{member_name}}(start, end, status);
+                    type{{(name)}}.setGroup{{member_name}}(std::move(group{{member_name}}));
+                }
+            {%- elif member_details.metaData == 'Types' -%}
+                type{{(name)}}.set{{member_name}}(_getField<{{member_details.dataType}}>(start, end));
+                {%- for type_name, type_details in member_details.data.items() -%}
+                    _decode{{type_details.metaData}}{{type_name}}(start, end, status);
+                {%- endfor -%}
+            {%- endif -%}
+        {%- endfor -%}
+        return;
+    }
+{%- endmacro -%}
+
+{%- macro renderDecodeGroup(name, details) -%}
+    void _decodeGroup{{name}}(char*& start, char*& end, Status& status)
+    {
+        {%- for member_name, member_details in details.data.items() -%}
+            {%- if 'metaData' not in member_details -%}
+                {%- if 'dataTypeLen' in member_details -%}
+                    group{{(name)}}.set{{member_name}}(start);
+                    start += {{member_details.dataTypeLen}};
+                {%- else -%}
+                    group{{(name)}}.set{{member_name}}(_getField<{{member_details.dataType}}>(start, end));
+                {%- endif -%}
+            {%- elif member_details.metaData == 'Group' -%}
+                group{{(name)}}.set{{member_name}}(_getField<{{member_details.dataType}}>(start, end));
+                for({{ member_details.dataType }} i = 0; i < group{{(name)}}.get{{ member_name }}(); i++)
+                {
+                    _decode{{member_details.metaData}}{{member_name}}(start, end, status);
+                    group{{(name)}}.setGroup{{member_name}}(std::move(group{{member_name}}));
+                }
+            {%- elif member_details.metaData == 'Types' -%}
+                group{{(name)}}.set{{member_name}}(_getField<{{member_details.dataType}}>(start, end));
+                {%- for type_name, type_details in member_details.data.items() -%}
+                    _decode{{type_details.metaData}}{{type_name}}(start, end, status);
+                {%- endfor -%}
+            {%- endif -%}
+        {%- endfor -%}
+        return;
+    }
+{%- endmacro -%}
+
+
+template <typename HandlerType>
+class Decoder {
+    {%- for name, details in yamlData.items() -%}
+        {%- if details.metaData == 'Message' -%}
+            {{name}} {{ renderCamelCase(name) }};
+        {%- elif details.metaData == 'Type' -%}
+            Type{{name}} type{{name}};
+        {%- elif details.metaData == 'Group' -%}
+            Group{{name}} group{{name}};
+        {%- endif -%}
+    {%- endfor -%}
+
+    inline uint8_t _getType(char*& start, char*& end)
+    {
+        uint8_t type;
+        memcpy(&type, start+2, 1);
+        return type;
+    }
+
+    template <typename FieldType>
+    inline FieldType _getField(char*& start, char*& end)
+    {
+        FieldType field;
+        std::memcpy(&field, start, sizeof(FieldType));
+        start += sizeof(FieldType);
+        return field;
+    }
+
+    {%- for name, details in yamlData.items() -%}
+        {%- if details.metaData == 'Message' -%}
+            {{renderDecodeMessage(name, details)}}
+        {%- elif details.metaData == 'Type' -%}
+            {{renderDecodeType(name, details)}}
+        {%- elif details.metaData == 'Group' -%}
+            {{renderDecodeGroup(name, details)}}
+        {%- endif -%}
+    {%- endfor -%}
+
+public:
+    void decode(char*& start, char*& end, HandlerType& customHandler, Status& status)
+    {
+        _decodeLoginRequest(start, end, status);
+        customHandler(loginRequest);
+    }
+};

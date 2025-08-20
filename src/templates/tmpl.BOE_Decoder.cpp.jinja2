@@ -1,0 +1,294 @@
+{%- macro renderCamelCase(field) -%}
+    {# # Convert a field name to camelCase #}
+    {{- field[:1] | lower }}{{ field[1:] -}}
+{%- endmacro -%}
+
+{%- macro renderMemberName(field) -%}
+    {# # Append an underscore to camelCase field name #}
+    {{- renderCamelCase(field) -}}_
+{%- endmacro -%}
+
+{%- macro renderHelperMembers() -%}
+    {{"\n"}}// Member variables to hold decoded fields for various custom datatypes{{"\n"}}
+    {%- for group, groupSize in yamlData['Groups'].items() -%}
+        Group{{group}} group{{group}}_;
+    {%- endfor -%}
+
+    {%- for message, details in yamlData['Messages'].items() -%}
+        {{message}} {{renderMemberName(message)}};
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderMembers(prefix, data) -%}
+    {# {{"\n"}}//# Logic for decoding fields and handling optional or nested fields{{"\n"}} #}
+    {%- set firstOptional = [true] -%}
+    {%- set var = renderMemberName(prefix) -%}
+    {%- for member, details in data.Fields.items() -%}
+    {{"\n"}}
+        {%- set dataType = yamlData['Fields'][member]['dataType'] -%}
+
+        {%- if details is string and 'Enum' not in details -%}
+            {# Check if the field is present based on bitfield logic #}
+            {%- if 'metaData' in data and 'hasOptional' in data.metaData -%}
+                if ( {{renderMemberName(data.metaData.message)}}.getGroup{{data.metaData.hasOptional}}() [static_cast<uint8_t>({{data.metaData.message}}BitfieldIdx::{{member|upper}})].get{{data.metaData.message}}Bitfield() & (1 << static_cast<uint8_t>({{data.metaData.message}}BitIdx::{{member|upper}}))) {
+            {%- else -%}
+                {%- if firstOptional -%}
+                    {{"\n"}}{{"\n"}}// using bitfields to check which optionals fields are present at the end, and should be decoded.
+                    auto bitfields = {{var}}.getGroup{{details}}();
+                    size_t bitfieldIdx = 0;
+                    size_t bitIdx = 0;
+                    {%- do firstOptional.pop() -%}
+                {%- endif -%}
+                bitfieldIdx = static_cast<uint8_t>({{prefix}}BitfieldIdx::{{member|upper}});
+                bitIdx = static_cast<uint8_t>({{prefix}}BitIdx::{{member|upper}});
+                if ( bitfields.size() > bitfieldIdx and bitfields[bitfieldIdx].get{{prefix}}Bitfield() & (1 << bitIdx)) {
+            {%- endif -%}
+        {%- endif -%}
+        
+        {% if details is iterable and (details is not string and details is not mapping) %}
+            {# # For constrained types #}
+            {{"\n"}}// verification for constant field
+            {{dataType}} {{renderCamelCase(member)}} = _decode<{{dataType}}>(start, end, status);
+            if (!{{renderCamelCase(member)}}EnumOptions.count({{renderCamelCase(member)}}))
+            {
+                status.updateStatus(StatusEnum::INVALID_PAYLOAD);
+                return;
+            }
+            {{var}}.set{{member}}(static_cast<{{prefix}}::{{member}}Enum>({{renderCamelCase(member)}}));
+        {%- elif details is mapping and 'ParamGroups' in details -%}
+            {# # Handle param groups with multiple or single types #}
+            {{"\n"}}{{"\n"}}// decoding group count, and respective groups/types from the payload
+            {{dataType}} {{renderCamelCase(member)}} = _decode<{{dataType}}>(start, end, status);
+            for({{ dataType }} i = 0; i < {{renderCamelCase(member)}}; ++i)
+            {
+                {# Different Logic for ParamGroups where type information is used for decoding, and General Group #}
+                {%- if details.ParamGroups|length > 1 -%}
+                    ParamGroupTypesEnum type = static_cast<ParamGroupTypesEnum>(_getType(start, end, TypeLocationEnum::PARAMGROUP_LOC, status));
+                    if (status.getStatus() != StatusEnum::PARSING) return ;
+                    {%- for group, groupSize in details.ParamGroups.items()%}
+                        {%- if loop.first -%}
+                        if(type == ParamGroupTypesEnum::{{ group | upper }})
+                        {%- else -%}
+                        else if(type == ParamGroupTypesEnum::{{ group | upper }})
+                        {%- endif -%}
+                        {
+                            _decodeGroup{{group}}(start, end, status);
+                            if (status.getStatus() != StatusEnum::PARSING) return ;
+                            {{var}}.setGroup{{group}}(std::move(group{{group}}_));
+                            group{{group}}_.reset();
+                        }
+                    {%- endfor -%}
+                {%- elif details.ParamGroups|length == 1 -%}
+                    {%- for group, groupSize in details.ParamGroups.items()%}
+                        _decodeGroup{{group}}(start, end, status);
+                        if (status.getStatus() != StatusEnum::PARSING) return ;
+                        {{var}}.setGroup{{group}}(std::move(group{{group}}_));
+                    {%- endfor -%}
+                {%- endif -%}
+            }
+        {%- elif details is string and 'Enum' in details -%}
+            {# # Verify a constant or enum value #}
+            _verifyField(start, end, {{details}}, status);
+        {%- elif  dataType == 'char*' -%}
+            {# # Decode a fixed-size char array #}
+            const char* {{renderCamelCase(member)}} = start;
+            {{var}}.set{{member}}({{renderCamelCase(member)}});
+            start += StringLengthsEnum::{{member|upper}};
+        {%- else -%}
+            {# # General decoding logic for other field types #}
+            {{var}}.set{{member}}(_decode<{{dataType}}>(start, end, status));
+        {%- endif -%}
+
+        {%- if details is string and 'Enum' not in details -%}
+            {# # End of bitfield check block #}
+            }  
+        {%- endif -%}
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderGroups(data)-%}
+    {# # Generate decoding functions for groups #}
+    {%- for name, details in data.items() -%}
+        {{"\n"}}{{"\n"}}{# // Decode for Group{{name}} class #}
+        void _decodeGroup{{name}}(char*& start, char* end, Status& status) noexcept
+        {
+            if (status.getStatus() != StatusEnum::PARSING) return;
+            {{renderMembers("Group" ~ name, details)}}
+        }
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderMessages(data)-%}
+    {# # Generate decoding functions for messages #}
+    {%- for name, details in data.items() -%}
+        {{"\n"}}{{"\n"}}// Decode for {{name}} class
+        void _decode{{name}}(char*& start, char* end, Status& status) noexcept
+        {
+            if (status.getStatus() != StatusEnum::PARSING) return;
+            {{renderMembers(name, details)}}
+            if (status.getStatus() == StatusEnum::PARSING)
+                status.updateStatus(StatusEnum::COMPLETE);
+        }
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderHelpers()-%}
+    {# # Helper functions for decoding operations #}
+
+    // Extracts the type (e.g., message or param group type) from a specific location
+    inline uint8_t _getType(char*& start, char*& end, size_t loc, Status& status)
+    {
+        if (status.getStatus() != StatusEnum::PARSING) return 0;
+        if (start + loc + sizeof(uint8_t) > end)
+        {
+            status.updateStatus(StatusEnum::NEED_MORE_DATA);
+            return 0;
+        }
+        uint8_t type(*reinterpret_cast<uint8_t*>(start+loc));
+        return type;
+    }
+
+    // Decodes a field of the given type
+    template<typename FieldType>
+    inline FieldType _decode(char*& start, char* end, Status& status)
+    {
+        if (status.getStatus() != StatusEnum::PARSING) return FieldType{};
+        if (start + sizeof(FieldType) > end)
+        {
+            status.updateStatus(StatusEnum::NEED_MORE_DATA);
+            return FieldType{};
+        }
+
+        FieldType field(*reinterpret_cast<FieldType *>(start));
+        start += sizeof(FieldType);
+        return field;
+    }
+
+    // Verifies a field against an expected value
+    template<typename FieldType>
+    inline void _verifyField(char*& start, char* end, FieldType verify, Status& status) noexcept
+    {
+        if (status.getStatus() != StatusEnum::PARSING) return;
+        if (start + sizeof(FieldType) > end)
+        {
+            status.updateStatus(StatusEnum::NEED_MORE_DATA);
+            return;
+        }
+
+        FieldType field(*reinterpret_cast<FieldType *>(start));
+        start += sizeof(FieldType);
+
+        if (field != verify)
+        {
+            status.updateStatus(StatusEnum::CORRUPTED_PAYLOAD);
+            return;
+        }
+        return;
+    }
+{%- endmacro -%}
+
+{# # Decoder class template with generated functions #}
+#pragma once
+#include "/root/Subhash/src/common/status.h"
+#include "/root/Subhash/src/common/utils.h"
+#include "BOE_Handler.h"
+#include "BOE_Msgs.h"
+#include <fstream>
+#include <iostream>
+#include <vector>
+#include <cstring>
+enum TypeLocationEnum : size_t
+{
+    MESSAGE_LOC = 4,  // Location of message type in the payload
+    PARAMGROUP_LOC = 2  // Location of param group type in the payload
+};
+
+template <typename HandlerType>
+class Decoder {
+    {{renderHelperMembers()}}
+    {{renderHelpers()}}
+    {{renderGroups(yamlData['Groups'])}}
+    {{renderMessages(yamlData['Messages'])}}
+public:
+    void decode(const std::vector<char> &hexPayload, Status &status) noexcept
+    {
+        // Convert hexadecimal payload to binary data
+        std::vector<char> payload(hexPayload.size() / 2);
+        for (size_t i = 0; i < hexPayload.size(); i += 2)
+        {
+            payload[i / 2] = static_cast<char>(hexPairToByte(hexPayload[i], hexPayload[i + 1]));
+        }
+        char *start = const_cast<char *>(payload.data());
+        char *end = start + payload.size();
+
+        HandlerType handler;
+        MessagesEnum messageType = static_cast<MessagesEnum>(_getType(start, end, TypeLocationEnum::MESSAGE_LOC, status));
+        {%- for message, details in yamlData['Messages'].items() -%}
+            {%- if loop.first -%}
+                if(messageType == MessagesEnum::{{ message | upper }})
+            {%- else -%}
+                else if(messageType == MessagesEnum::{{ message | upper }})
+            {%- endif -%}
+                {
+                    _decode{{message}}(start, end, status);
+                    handler({{renderMemberName(message)}}, status);
+                }
+        {%- endfor -%}
+                else
+                {
+                    status.updateStatus(StatusEnum::INVALID_MESSAGE_TYPE);
+                    handler(status);
+                }
+    }
+
+    {%- for message, details in yamlData['Messages'].items() -%}
+        {{message}} get{{message}}()
+        {
+            return {{renderMemberName(message)}};
+        }
+    {%- endfor -%}
+};
+
+{# // EOF #}
+{# int main(int argc, char* argv[]) {
+    if (argc != 2) {
+        std::cerr << "Usage: " << argv[0] << " <filename>" << std::endl;
+        return 1;
+    }
+
+    std::ifstream file(argv[1]);
+    if (!file) {
+        std::cerr << "Error: Cannot open file " << argv[1] << std::endl;
+        return 1;
+    }
+
+    std::string hexString((std::istreambuf_iterator<char>(file)),
+                           std::istreambuf_iterator<char>());
+
+    const size_t bufferSize = hexString.size();
+    if (bufferSize % 2 != 0) {
+        std::cerr << "Error: Hex string length must be even." << std::endl;
+        return 1;
+    }
+
+    std::vector<char> buffer(bufferSize / 2);
+
+    for (size_t i = 0; i < bufferSize; i += 2) {
+        buffer[i / 2] = static_cast<char>(hexPairToByte(hexString[i], hexString[i + 1]));
+    }
+
+    char* start = buffer.data();
+    char* end = buffer.data() + buffer.size();
+    
+    Status status;
+    Decoder<CustomHandler> decoder;
+    decoder.decode(start, end, status);
+    
+    // Print the buffer for debugging
+    std::cout << "Binary buffer:" << std::endl;
+    for (char byte : buffer) {
+        printf("%02X", static_cast<unsigned char>(byte));
+    }
+    std::cout << std::endl;
+    return 0;
+} #}

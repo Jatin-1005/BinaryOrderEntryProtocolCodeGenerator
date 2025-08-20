@@ -1,0 +1,114 @@
+{%- macro renderCamelCase(field) -%}
+    {# # Converts a string field to camelCase format (first letter lowercase) #}
+    {{- field[:1] | lower }}{{ field[1:] -}}
+{%- endmacro -%}
+
+{%- macro renderMemberName(field) -%}
+    {# # Appends an underscore to the camelCase version of a field #}
+    {{- renderCamelCase(field) -}}_
+{%- endmacro -%}
+
+{%- macro renderMembers(prefix, data) -%}
+    {# # Generates output for the members of a class/group #}
+    {%- set var = renderCamelCase(prefix) -%}
+    {%- set identifier = '": "'-%}
+    {%- set indent = "" -%}
+    
+    {%- if 'Group' in prefix -%}
+        {%- set var = var + "[idx]" -%}
+        {# # Iterates over the elements in the group #}
+        for(size_t idx = 0; idx < {{renderCamelCase(prefix)}}.size(); ++idx)
+        {
+    {%- endif -%}
+    
+    {%- set firstOptional = [true] -%}
+
+    {%- if 'Group' in prefix and 'ParamGroupLength' not in data.Fields-%}
+        {%- set identifier = "(idx+1) <<" + identifier -%}
+        {%- set indent = "  " -%}
+    {%- endif -%}
+    
+    {{"\n"}}
+
+    {%- for member, details in data.Fields.items() -%}
+        {%- if yamlData['Fields'][member]['dataType'] == 'char*' -%}
+            {# # Encoding for char* type fields #}
+            os << "\n {{indent}}{{member}}" << {{identifier}} << std::setw(2) << std::setfill('0') << {{var}}.get{{member}}();
+            {{"\n"}}
+        {%- else -%}
+            {# # Encoding for non-char fields (integers, enums, etc.) #}
+            os << "\n {{indent}}{{member}}" << {{identifier}} << std::setw(2) << std::setfill('0') << static_cast<int>({{var}}.get{{member}}());
+            {{"\n"}}
+            {%- if details is mapping and 'ParamGroups' in details -%}
+                {# # Iterates through param groups for the member #}
+                {%- for group, groupSize in details.ParamGroups.items() -%}
+                    os << {{var}}.getGroup{{group}}();
+                    {{"\n"}}
+                {%- endfor -%}
+            {%- endif -%}
+        {%- endif -%}
+    {%- endfor -%}
+
+    {%- if 'Group' in prefix -%}
+        }
+    {%- endif -%}
+    
+    return os;
+{%- endmacro -%}
+
+{%- macro renderGroups(data) -%}
+    {# # Generates operator<< for groups #}
+    {%- for name, details in data.items() -%}
+        std::ostream& operator<<(std::ostream& os, const std::vector<Group{{name}}>& group{{(name)}})
+        {
+            {{renderMembers("Group" ~ name, details)}}
+        }
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderMessages(data) -%}
+    {# # Generates operator<< for message types #}
+    {%- for name, details in data.items() -%}
+        std::ostream& operator<<(std::ostream& os, const {{name}}& {{renderCamelCase(name)}})
+        {
+            {{renderMembers(name, details)}}
+        }
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderHelpers() -%}
+    {# # Helper function for encoding arrays of fixed size #}
+    template<size_t length>
+    std::ostream& operator<<(std::ostream& os, const std::array<char, length>& arr)
+    {
+        {# # Iterate over the array and print each element in hexadecimal #}
+        for(size_t idx = 0; idx < arr.size(); ++idx)
+        {
+            os << std::setw(2) << std::setfill('0') << static_cast<int>(arr[idx]);
+        }
+        return os;
+    }
+{%- endmacro -%}
+
+#pragma once
+#include "BOE_Msgs.h"
+#include <iostream>
+#include <iomanip>
+#include <ostream>
+#include <array>
+#include <vector>
+{{"\n"}}
+{# # Render helper functions for array encoding #}
+{{renderHelpers()}}  
+{# # Generate group-specific encoding functions #}
+{{renderGroups(yamlData['Groups'])}}  
+{# # Generate message-specific encoding functions #}
+{{renderMessages(yamlData['Messages'])}}  
+
+{# 
+int main()
+{
+    // Create a login request and output it
+    LoginRequest loginRequest;
+    std::cout << loginRequest << std::endl;
+} #}

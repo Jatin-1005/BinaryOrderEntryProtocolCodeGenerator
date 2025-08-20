@@ -1,0 +1,173 @@
+#pragma once
+#include <iostream>
+#include <cstring>
+#include <vector>
+#include <memory>
+#include <variant>
+
+enum class MessageEnum
+{
+    LOGINREQUEST = 55,
+    LOGINRESPONSE = 36
+};
+
+enum class TypeEnum
+{
+    UNITSEQUENCES = 128,
+    RETURNBITFIELDS = 129
+};
+
+{% set field_type_map = {
+    'uint8_t': 'uint8_t',
+    'uint16_t': 'uint16_t',
+    'uint32_t': 'uint32_t',
+    'bitset_80': 'std::bitset<80>',
+    'string_1': 'char',
+    'string_60': 'char',
+    'string_4': 'char',
+    'string_10': 'char'
+} %}
+
+{%- macro debug(name) -%}
+    {{-"\n"}}DEBUG-{{name}}-DEBUG{{"\n"-}}
+{%- endmacro -%}
+
+{%- set INDENT = '    ' -%}
+
+{%- macro renderCamelCase(field) -%}
+    {{- field[:1] | lower }}{{ field[1:] -}}
+{%- endmacro -%}
+
+{%- macro renderMemberName(field) -%}
+    {{- renderCamelCase(field) -}}_
+{%- endmacro -%}
+
+{%- macro renderFieldMember(name, details) -%}
+    {%- if details.dataType == 'char*' -%}
+        {{- INDENT }}{{ details.dataType[:4] }} {{ renderMemberName(name) }}[{{details.dataTypeLen}}]; // {{ details.description }}{{"\n"-}}
+    {%- else -%}
+        {{- INDENT }}{{ field_type_map.get(details.dataType) }} {{ renderMemberName(name) }}; // {{ details.description }}{{"\n"-}}
+    {%- endif -%}
+{%- endmacro -%}
+
+{%- macro renderGroupMember(name, details) -%}
+    {{- renderFieldMember(name, details) -}}
+    {{- INDENT }}std::vector<Group{{name}}> group{{name}}List_;{{ "\n" -}}
+{%- endmacro -%}
+
+{%- macro renderTypesMember(name, details) -%}
+    {{- renderFieldMember(name, details) -}}
+    {%- for curr_name, curr_details in details.data.items() -%}
+        {{- INDENT }}std::vector<Type{{curr_name}}> type{{curr_name}}List_;{{ "\n" -}}
+    {%- endfor -%}
+{%- endmacro -%}
+
+{%- macro renderMember(name, details) -%}
+    {%- if 'metaData' not in details -%}
+        {{ renderFieldMember(name, details) }}
+    {%- elif details.metaData == 'Group' -%}
+        {{ renderGroupMember(name, details) }}   
+    {%- elif details.metaData == 'Types' -%}
+        {{ renderTypesMember(name, details) }}
+    {%- endif -%}
+{%- endmacro -%}
+
+{%- macro renderMembers(name, details) -%}
+    {%- if details.metaData == 'Message' -%}
+        {%- for curr_name, curr_details in details.data.items() -%}
+            {{renderMember(curr_name, curr_details)}}
+        {%- endfor -%}
+    {%- elif details.metaData == 'Group' -%}
+        {%- for curr_name, curr_details in details.data.items() -%}
+            {{renderMember(curr_name, curr_details)}}
+        {%- endfor -%}
+    {%- elif details.metaData == 'Type' -%}
+        {%- for curr_name, curr_details in details.data.items() -%}
+            {{renderMember(curr_name, curr_details)}}
+        {%- endfor -%}
+    {%- endif -%}
+{%- endmacro -%}
+
+{%- macro renderGroupDefinition(name, details) -%}
+    struct Group{{name}}{{ "\n" -}}
+    { {{ "\n" -}}
+    private: {{ "\n" -}}
+        {{- renderMembers(name, details) -}}{{ "\n" -}}
+    public: {{ "\n" -}}
+        {%- for member_name, member_details in details.data.items() -%}
+            {{- renderAccessors(member_name, member_details) -}}
+        {%- endfor -%}    
+    }; {{ "\n" -}}
+    {{- "\n" -}}
+{%- endmacro -%}
+
+{%- macro renderTypeDefinition(name, details) -%}
+    struct Type{{name}}{{ "\n" -}} 
+    { {{ "\n" -}}
+    private: {{ "\n" -}}
+        {{- renderMembers(name, details) -}}{{ "\n" -}}
+    public: {{ "\n" -}}
+        {%- for member_name, member_details in details.data.items() -%}
+            {{- renderAccessors(member_name, member_details) -}}
+        {%- endfor -%}    
+        }; {{ "\n" -}}
+    {{- "\n" -}}
+{%- endmacro -%}
+
+{%- macro renderMessageDefinition(name, details) -%}
+    class {{name}}{{ "\n" -}} 
+    { {{ "\n" -}}
+    private: {{ "\n" -}}
+        {{- renderMembers(name, details) -}}{{ "\n" -}}
+    public: {{ "\n" -}}
+        {# {{- renderConstructor(name, details) -}} #}
+        {# {{- renderDestructor(name, details) -}} #}
+        {%- for member_name, member_details in details.data.items() -%}
+            {{- renderAccessors(member_name, member_details) -}}
+        {%- endfor -%}
+    }; {{ "\n" -}}
+{%- endmacro -%}
+
+{%- macro renderFieldAccessor(name, details) -%}
+    {%- if details.dataType == 'char*' -%}
+        {{- INDENT }}inline const {{ details.dataType }} get{{name}}() const { return {{ renderMemberName(name) }}; }{{"\n"-}}
+        {{- INDENT }}inline void set{{name}}(const {{ details.dataType }} {{renderCamelCase(name)}}) { {{"\n"-}}
+            {{- INDENT }}{{ INDENT }}strncpy({{ renderMemberName(name) }}, {{renderCamelCase(name)}}, {{details.dataTypeLen}}); {{"\n"-}}
+        {{- INDENT }}} {{"\n"-}}
+    {%- elif details.metaData == 'Type' -%}
+        {{- INDENT }}inline std::vector<Type{{name}}> getType{{name}}() const { return type{{name}}List_; }{{"\n"-}}
+        {{- INDENT }}inline void setType{{name}}(Type{{name}} type{{name}}) { type{{name}}List_.push_back(type{{name}}); }{{"\n"-}}
+
+    {%- elif details.metaData == 'Group' -%}
+        {{- INDENT }}inline {{ field_type_map.get(details.dataType) }} get{{name}}() const { return {{ renderMemberName(name) }}; }{{"\n"-}}
+        {{- INDENT }}inline void set{{name}}(const {{ field_type_map.get(details.dataType) }} {{renderCamelCase(name)}}) { {{ renderMemberName(name) }} = {{renderCamelCase(name)}}; }{{"\n"}}{{"\n"-}}
+        {{- INDENT }}inline std::vector<Group{{name}}> getGroup{{name}}() const { return group{{name}}List_; }{{"\n"-}}
+        {{- INDENT }}inline void setGroup{{name}}(Group{{name}} group{{name}}) { group{{name}}List_.push_back(group{{name}}); }{{"\n"-}}
+    {%- else -%}
+        {{- INDENT }}inline {{ field_type_map.get(details.dataType) }} get{{name}}() const { return {{ renderMemberName(name) }}; }{{"\n"-}}
+        {{- INDENT }}inline void set{{name}}(const {{ field_type_map.get(details.dataType) }} {{renderCamelCase(name)}}) { {{ renderMemberName(name) }} = {{renderCamelCase(name)}}; }{{"\n"-}}
+    {%- endif -%}
+{%- endmacro -%}
+
+{%- macro renderAccessors(name, details) -%}
+    {%- if 'metaData' not in details -%}
+        {{- renderFieldAccessor(name, details) }}{{ "\n" -}}
+    {%- elif details.metaData == 'Group' -%}
+        {{- renderFieldAccessor(name, details) }}{{ "\n" -}}
+    {%- elif details.metaData == 'Types' -%} 
+        {{- renderFieldAccessor(name, details) }}{{ "\n" -}}
+        {%- for type_name, type_details in details.data.items() -%}
+            {{- renderFieldAccessor(type_name, type_details) -}}
+        {%- endfor -%}
+    {%- endif -%}
+{%- endmacro -%} 
+
+{%-for name, details in yamlData.items()-%}
+    {%- if details.metaData == 'Message' -%}
+        {{- renderMessageDefinition(name, details) -}}
+    {%- elif details.metaData == 'Group' -%}
+        {{- renderGroupDefinition(name, details) -}}
+    {%- elif details.metaData == 'Type' -%}
+        {{- renderTypeDefinition(name, details) -}}
+    {%- endif -%}
+{%- endfor -%}

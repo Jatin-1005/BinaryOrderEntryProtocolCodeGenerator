@@ -1,0 +1,107 @@
+#pragma once
+#include <iostream>
+#include <string>
+#include <vector>{{ "\n" -}}
+
+{%- set INDENT = '    ' -%}
+
+{%- macro renderCamelCase(field) -%}
+    {{- field[:1] | lower }}{{ field[1:] -}}
+{%- endmacro -%}
+
+{%- macro renderEncoderInner( name, details, argument ) -%}
+    {%- for member_name, member_details in details.data.items() -%}
+        {%- if 'dataTypeLen' in member_details -%}
+            _encode<{{member_details.dataTypeLen }}>(start, end, {{argument}}.get{{member_name}}(), status);
+        {%- else -%}
+            _encode(start, end, {{argument}}.get{{member_name}}(), status);
+        {%- endif -%}
+
+        {%- if member_details.metaData == 'Group' -%}
+            _encode(start, end, {{argument}}.getGroup{{member_name}}(), status);
+        {%- elif member_details.metaData == 'Types' -%}
+        {%- for type_name, type_details in member_details.data.items() -%}
+            _encode(start, end, {{argument}}.getType{{type_name}}(), status);
+        {%- endfor -%}
+        {%- endif -%}
+    {%- endfor -%}
+{%- endmacro -%}
+
+class Encoder
+{
+private:
+    {%- for name, details in yamlData.items()-%}
+        {%- if details.metaData == 'Message' -%}
+            void _encode(char*& start, char* end, const {{name}}& msg, Status& status) {
+                {{ renderEncoderInner(name, details, 'msg') }}
+                status.updateStatus(StatusEnum::COMPLETE);
+            }
+        {%- elif details.metaData == 'Group' -%}
+            void _encode(char*& start, char* end, const Group{{name}}& field, Status& status) {
+                {{ renderEncoderInner(name, details, 'field') }}
+            }
+        {%- elif details.metaData == 'Type' -%}
+            void _encode(char*& start, char* end, const Type{{name}}& field, Status& status) {
+                {{ renderEncoderInner(name, details, 'field') }}
+            }
+        {%- endif -%}
+    {%- endfor -%}
+    
+    template<typename U>
+    void _encode(char*& start, char* end, U field, Status& status) {
+        if(start + sizeof(field) > end) {
+            status.updateStatus(StatusEnum::BUFFER_OVERFLOW);
+            return;
+        }
+
+        *reinterpret_cast<U*>(start) = field;
+
+        start += sizeof(field);
+        status.updateNextStart(start);
+    }
+    
+    template <size_t len>
+    void _encode(char*& start, char* end, const char* field, Status& status) {
+        if(start + len > end) {
+            status.updateStatus(StatusEnum::BUFFER_OVERFLOW);
+            return;
+        }
+
+        for(size_t i = 0; i < len; i++) {
+            start[i] = field[i];
+        }
+
+        start += len;
+        status.updateNextStart(start);
+    }
+
+    template<typename U>
+    void _encode(char*& start, char* end, const std::vector<U>& field, Status& status) {
+        for(const auto& element: field) {
+            _encode(start, end, element, status); // won't work for vector of strings
+            if (status.getStatus() == StatusEnum::BUFFER_OVERFLOW) { 
+                return;
+            } 
+        }
+    }
+
+public:
+    template <typename T>
+    void encodeMessage(char*& start, char* end, const T& msg, Status& status) {
+        _encode(start, end, msg, status);
+        {# MessageEnum messageType = static_cast<MessageEnum>(msg.getMessageType());
+        switch(messageType) {
+            {%- for name, details in yamlData.items() -%}
+                {%- if details.metaData == 'Message' -%}
+                    case MessageEnum::{{name | upper}}:
+                        _encode{{name}}(start, end, msg, status);
+                        return;
+                {%- endif -%}
+            {%- endfor -%}
+            default:
+                std::cout << "Error: Encoding MessageType Not Found" << std::endl;
+                return;
+        } #}
+    }
+
+};
