@@ -3,9 +3,7 @@
 
 # **Binary Order Entry Protocol Code Generator**
 
-Hello there! 👋
-
-I am **Subhash** (Padala Sri Siva Shyama Sri Venkata Sri Vishnu Subhash), and I am excited to share my **BOE Code Generator** project which auto-generates C++ encoder, decoder, and message object code from a YAML schema for the BOE protocol. It provides complete support for all BOE protocol features, such as constrained fields, optional fields, and nested repeating groups — without introducing concurrency or the full scope of a FIX engine.
+I am excited to share my **BOE Code Generator** project which auto-generates C++ encoder, decoder, and message object code from a YAML schema for the BOE protocol. It provides complete support for all BOE protocol features, such as constrained fields, optional fields, and nested repeating groups — without introducing concurrency or the full scope of a FIX engine.
 
 Think of it as:
 Fix8-style codegen for low-latency BOE trading, minus the engine overhead.
